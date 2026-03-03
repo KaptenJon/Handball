@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Shell
+    x:Class="HandballGame.AppShell"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:local="clr-namespace:HandballGame"
+    Shell.FlyoutBehavior="Disabled"
+    Title="Handball Goalkeeper">
+
+    <ShellContent
+        x:Name="main"
+        Title="Menu"
+        ContentTemplate="{DataTemplate local:MainPage}"
+        Route="main" />
+
+</Shell>
