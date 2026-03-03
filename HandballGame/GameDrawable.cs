@@ -2,202 +2,272 @@ namespace HandballGame;
 
 public class GameDrawable : IDrawable
 {
-    private readonly GameEngine _engine;
+    private readonly HandballEngine _engine;
 
-    public GameDrawable(GameEngine engine)
+    public GameDrawable(HandballEngine engine) => _engine = engine;
+
+    public void Draw(ICanvas canvas, RectF dirty)
     {
-        _engine = engine;
+        DrawField(canvas, dirty);
+        DrawGoal(canvas, top: true);
+        DrawGoal(canvas, top: false);
+        DrawArcs(canvas);
+        DrawCenterLine(canvas);
+
+        // Defending team drawn first (behind attacking)
+        foreach (var p in _engine.DefendingTeam)
+            DrawPlayer(canvas, p);
+
+        foreach (var p in _engine.AttackingTeam)
+            DrawPlayer(canvas, p);
+
+        DrawBall(canvas);
+        DrawHUD(canvas, dirty);
+        DrawResultMessage(canvas, dirty);
     }
 
-    public void Draw(ICanvas canvas, RectF dirtyRect)
+    // ── Field ────────────────────────────────────────────────────────────────
+
+    private void DrawField(ICanvas canvas, RectF dirty)
     {
-        DrawField(canvas, dirtyRect);
-        DrawGoal(canvas);
-        DrawGoalkeeper(canvas);
-
-        if (_engine.Ball.IsActive || _engine.Ball.IsSaved || _engine.Ball.IsGoal)
-            DrawBall(canvas);
-
-        DrawHUD(canvas, dirtyRect);
-        DrawResultFlash(canvas, dirtyRect);
-    }
-
-    private void DrawField(ICanvas canvas, RectF rect)
-    {
-        // Green pitch
+        // Base green
         canvas.FillColor = Color.FromArgb("#2E7D32");
-        canvas.FillRectangle(rect);
+        canvas.FillRectangle(dirty);
 
-        // Pitch boundary line
+        // Alternating lighter stripes (horizontal bands)
+        canvas.FillColor = Color.FromArgb("#FFFFFF08");
+        float stripeH = _engine.FieldHeight / 10f;
+        for (int i = 0; i < 10; i += 2)
+            canvas.FillRectangle(0, i * stripeH, _engine.FieldWidth, stripeH);
+
+        // Boundary lines
         canvas.StrokeColor = Colors.White;
         canvas.StrokeSize = 2f;
-        float margin = _engine.FieldWidth * 0.05f;
-        canvas.DrawRectangle(margin, _engine.GoalBottom + 20f,
-            _engine.FieldWidth - margin * 2f, _engine.FieldHeight * 0.62f);
+        float lm = _engine.FieldWidth * 0.02f;
+        canvas.DrawRectangle(lm, _engine.TopGoalY + 4f,
+            _engine.FieldWidth - lm * 2f,
+            _engine.BottomGoalY - _engine.TopGoalY - 8f);
+    }
 
-        // 6-metre line arc (penalty area)
-        float centreX = _engine.FieldWidth / 2f;
-        float lineY = _engine.GoalBottom + 20f;
-        canvas.DrawArc(centreX - _engine.FieldWidth * 0.30f,
-            lineY - _engine.FieldHeight * 0.04f,
-            _engine.FieldWidth * 0.60f,
-            _engine.FieldHeight * 0.14f,
+    private void DrawArcs(ICanvas canvas)
+    {
+        float cx = _engine.FieldWidth / 2f;
+        canvas.StrokeColor = Colors.White;
+        canvas.StrokeSize = 1.5f;
+
+        // --- Top goal arcs ---
+        float r6t = _engine.Top6mRadius;
+        float r9t = _engine.Top9mRadius;
+        float goalY = _engine.TopGoalY;
+
+        // 6 m arc (dashed style via thinner line)
+        canvas.DrawArc(cx - r6t, goalY - r6t, r6t * 2f, r6t * 2f,
+            0f, 180f, false, false);
+
+        // 9 m arc (free-throw line)
+        canvas.StrokeColor = Color.FromArgb("#FFFFFFCC");
+        canvas.DrawArc(cx - r9t, goalY - r9t, r9t * 2f, r9t * 2f,
+            0f, 180f, false, false);
+
+        // --- Bottom goal arcs ---
+        float r6b = _engine.Bottom6mRadius;
+        float byY  = _engine.BottomGoalY;
+
+        canvas.StrokeColor = Colors.White;
+        canvas.StrokeSize = 1.5f;
+        canvas.DrawArc(cx - r6b, byY - r6b, r6b * 2f, r6b * 2f,
             180f, 360f, false, false);
 
-        // Centre circle
-        float centreLineY = _engine.FieldHeight * 0.63f;
-        canvas.DrawLine(margin, centreLineY, _engine.FieldWidth - margin, centreLineY);
-        canvas.DrawCircle(centreX, centreLineY, _engine.FieldWidth * 0.09f);
-        canvas.FillColor = Colors.White;
-        canvas.FillCircle(centreX, centreLineY, 4f);
+        canvas.StrokeColor = Color.FromArgb("#FFFFFFCC");
+        canvas.DrawArc(cx - r6b * 1.5f, byY - r6b * 1.5f, r6b * 3f, r6b * 3f,
+            180f, 360f, false, false);
     }
 
-    private void DrawGoal(ICanvas canvas)
+    private void DrawCenterLine(ICanvas canvas)
     {
-        float postW = 7f;
+        float lm = _engine.FieldWidth * 0.02f;
+        canvas.StrokeColor = Colors.White;
+        canvas.StrokeSize = 2f;
+        canvas.DrawLine(lm, _engine.CenterY, _engine.FieldWidth - lm, _engine.CenterY);
+
+        // Center circle
+        float cr = _engine.FieldWidth * 0.08f;
+        canvas.DrawCircle(_engine.FieldWidth / 2f, _engine.CenterY, cr);
+
+        // Center dot
+        canvas.FillColor = Colors.White;
+        canvas.FillCircle(_engine.FieldWidth / 2f, _engine.CenterY, 4f);
+    }
+
+    // ── Goals ────────────────────────────────────────────────────────────────
+
+    private void DrawGoal(ICanvas canvas, bool top)
+    {
+        float left  = top ? _engine.TopGoalLeft  : _engine.BottomGoalLeft;
+        float right = top ? _engine.TopGoalRight : _engine.BottomGoalRight;
+        float lineY = top ? _engine.TopGoalY     : _engine.BottomGoalY;
+        float gw    = right - left;
+        float depth = 22f;
+
+        // Goal "box" extends away from the field
+        float boxTop    = top ? lineY - depth : lineY;
+        float boxBottom = top ? lineY         : lineY + depth;
 
         // Net fill
-        canvas.FillColor = Color.FromArgb("#FFFFFF20");
-        canvas.FillRectangle(_engine.GoalLeft, _engine.GoalTop,
-            _engine.GoalRight - _engine.GoalLeft, _engine.GoalBottom - _engine.GoalTop);
+        canvas.FillColor = Color.FromArgb("#FFFFFF25");
+        canvas.FillRectangle(left, boxTop, gw, depth);
 
-        // Net grid lines
+        // Net grid
         canvas.StrokeColor = Color.FromArgb("#FFFFFF55");
-        canvas.StrokeSize = 1f;
-        float gw = _engine.GoalRight - _engine.GoalLeft;
-        float gh = _engine.GoalBottom - _engine.GoalTop;
+        canvas.StrokeSize = 0.8f;
         for (int i = 1; i <= 5; i++)
         {
-            float x = _engine.GoalLeft + gw * i / 6f;
-            canvas.DrawLine(x, _engine.GoalTop, x, _engine.GoalBottom);
+            float x = left + gw * i / 6f;
+            canvas.DrawLine(x, boxTop, x, boxBottom);
         }
-        for (int i = 1; i <= 3; i++)
+        for (int i = 1; i <= 2; i++)
         {
-            float y = _engine.GoalTop + gh * i / 4f;
-            canvas.DrawLine(_engine.GoalLeft, y, _engine.GoalRight, y);
+            float y = boxTop + depth * i / 3f;
+            canvas.DrawLine(left, y, right, y);
         }
 
-        // Posts (drawn on top of net)
+        // Posts
+        float postW = 6f;
         canvas.FillColor = Colors.White;
-        // Left post
-        canvas.FillRectangle(_engine.GoalLeft - postW / 2f, _engine.GoalTop,
-            postW, gh);
-        // Right post
-        canvas.FillRectangle(_engine.GoalRight - postW / 2f, _engine.GoalTop,
-            postW, gh);
+        canvas.FillRectangle(left - postW / 2f, boxTop, postW, depth);
+        canvas.FillRectangle(right - postW / 2f, boxTop, postW, depth);
+
         // Crossbar
-        canvas.FillRectangle(_engine.GoalLeft - postW / 2f, _engine.GoalTop,
+        canvas.FillRectangle(left - postW / 2f,
+            top ? lineY - postW : lineY,
             gw + postW, postW);
 
-        // Post highlight (3-D effect)
-        canvas.FillColor = Color.FromArgb("#FFFF0000");
-        canvas.FillRectangle(_engine.GoalLeft - postW / 2f, _engine.GoalTop, postW / 3f, gh);
-        canvas.FillRectangle(_engine.GoalRight - postW / 6f, _engine.GoalTop, postW / 3f, gh);
+        // Red accent on posts
+        canvas.FillColor = Color.FromArgb("#FFCC0000");
+        canvas.FillRectangle(left - postW / 2f, boxTop, postW / 3f, depth);
+        canvas.FillRectangle(right - postW / 6f, boxTop, postW / 3f, depth);
     }
+
+    // ── Players ──────────────────────────────────────────────────────────────
+
+    private static readonly Color GoalkeeperColor = Color.FromArgb("#F9A825");
+    private static readonly Color AttackingColor  = Color.FromArgb("#1565C0");
+    private static readonly Color DefendingColor  = Color.FromArgb("#C62828");
+
+    private static Color PlayerFillColor(HandballPlayer p) =>
+        p.Role == PlayerRole.Goalkeeper ? GoalkeeperColor :
+        p.Side == TeamSide.Attacking    ? AttackingColor  : DefendingColor;
+
+    private void DrawPlayer(ICanvas canvas, HandballPlayer p)
+    {
+        float r = p.Radius;
+
+        // Shadow
+        canvas.FillColor = Color.FromArgb("#00000040");
+        canvas.FillCircle(p.X + 2f, p.Y + 3f, r);
+
+        // Glow ring for ball carrier
+        if (p.HasBall)
+        {
+            canvas.StrokeColor = Colors.Yellow;
+            canvas.StrokeSize = 3f;
+            canvas.DrawCircle(p.X, p.Y, r + 3f);
+        }
+
+        // Body fill
+        canvas.FillColor = PlayerFillColor(p);
+        canvas.FillCircle(p.X, p.Y, r);
+
+        // Outline
+        canvas.StrokeColor = p.HasBall ? Colors.Yellow : Color.FromArgb("#FFFFFF80");
+        canvas.StrokeSize = p.HasBall ? 2f : 1f;
+        canvas.DrawCircle(p.X, p.Y, r);
+
+        // Number
+        canvas.FontColor = Colors.White;
+        canvas.FontSize = 11f;
+        canvas.DrawString(p.Number.ToString(), p.X, p.Y + 1f, HorizontalAlignment.Center);
+    }
+
+    // ── Ball ─────────────────────────────────────────────────────────────────
 
     private void DrawBall(ICanvas canvas)
     {
         var b = _engine.Ball;
 
         // Shadow
-        canvas.FillColor = Color.FromArgb("#00000060");
-        canvas.FillEllipse(b.X - b.Radius * 0.8f + 4f, b.Y - b.Radius * 0.4f + 4f,
+        canvas.FillColor = Color.FromArgb("#00000055");
+        canvas.FillEllipse(b.X - b.Radius * 0.8f + 3f, b.Y - b.Radius * 0.4f + 3f,
             b.Radius * 1.6f, b.Radius * 0.8f);
 
-        // Ball body
+        // Body
         canvas.FillColor = Color.FromArgb("#F5E8D0");
         canvas.FillCircle(b.X, b.Y, b.Radius);
 
         // Seams
         canvas.StrokeColor = Color.FromArgb("#4A90D9");
-        canvas.StrokeSize = 1.5f;
+        canvas.StrokeSize = 1.2f;
         canvas.DrawCircle(b.X, b.Y, b.Radius);
         canvas.DrawLine(b.X - b.Radius, b.Y, b.X + b.Radius, b.Y);
         canvas.DrawArc(b.X - b.Radius * 0.5f, b.Y - b.Radius,
             b.Radius, b.Radius * 2f, 0f, 180f, false, false);
 
         // Highlight
-        canvas.FillColor = Color.FromArgb("#FFFFFF80");
-        canvas.FillCircle(b.X - b.Radius * 0.3f, b.Y - b.Radius * 0.35f, b.Radius * 0.25f);
+        canvas.FillColor = Color.FromArgb("#FFFFFF90");
+        canvas.FillCircle(b.X - b.Radius * 0.3f, b.Y - b.Radius * 0.35f, b.Radius * 0.28f);
     }
 
-    private void DrawGoalkeeper(ICanvas canvas)
+    // ── HUD ──────────────────────────────────────────────────────────────────
+
+    private void DrawHUD(ICanvas canvas, RectF dirty)
     {
-        var gk = _engine.Goalkeeper;
-        float left = gk.X - gk.Width / 2f;
-        float top = gk.Y - gk.Height / 2f;
+        // Top score banner
+        float bandH = _engine.TopGoalY - 2f;
+        if (bandH < 10f) bandH = 10f;
 
-        // Body shadow
-        canvas.FillColor = Color.FromArgb("#00000050");
-        canvas.FillRoundedRectangle(left + 3f, top + 3f, gk.Width, gk.Height, 8f);
-
-        // Jersey
-        canvas.FillColor = Color.FromArgb("#F9A825");
-        canvas.FillRoundedRectangle(left, top, gk.Width, gk.Height, 8f);
-
-        // Jersey stripe
-        canvas.FillColor = Color.FromArgb("#E65100");
-        canvas.FillRectangle(gk.X - 4f, top, 8f, gk.Height);
-
-        // Jersey outline
-        canvas.StrokeColor = Color.FromArgb("#BF360C");
-        canvas.StrokeSize = 2f;
-        canvas.DrawRoundedRectangle(left, top, gk.Width, gk.Height, 8f);
-
-        // Gloves
-        canvas.FillColor = Color.FromArgb("#FF7043");
-        canvas.FillCircle(left - 4f, gk.Y, 7f);
-        canvas.FillCircle(left + gk.Width + 4f, gk.Y, 7f);
-
-        // Number
-        canvas.FontColor = Colors.White;
-        canvas.FontSize = 14f;
-        canvas.DrawString("1", gk.X, top + gk.Height * 0.55f, HorizontalAlignment.Center);
-    }
-
-    private void DrawHUD(ICanvas canvas, RectF dirtyRect)
-    {
-        // HUD background band
         canvas.FillColor = Color.FromArgb("#CC1A237E");
-        canvas.FillRectangle(0f, 0f, dirtyRect.Width, _engine.GoalTop - 4f);
+        canvas.FillRectangle(0f, 0f, dirty.Width, bandH);
 
-        // Saves
         canvas.FontColor = Colors.White;
-        canvas.FontSize = 18f;
-        canvas.DrawString($"SAVES: {_engine.SavedShots}",
-            12f, _engine.GoalTop * 0.55f, HorizontalAlignment.Left);
+        canvas.FontSize = 15f;
+        canvas.DrawString($"YOU  {_engine.AttackScore}",
+            8f, bandH * 0.65f, HorizontalAlignment.Left);
 
-        // Level
-        int level = _engine.SavedShots / 5 + 1;
         canvas.FontColor = Color.FromArgb("#FFD54F");
-        canvas.FontSize = 14f;
-        canvas.DrawString($"LVL {level}",
-            dirtyRect.Width / 2f, _engine.GoalTop * 0.55f, HorizontalAlignment.Center);
+        canvas.FontSize = 13f;
+        canvas.DrawString($"First to {_engine.MaxScore}",
+            dirty.Width / 2f, bandH * 0.65f, HorizontalAlignment.Center);
 
-        // Lives
         canvas.FontColor = Colors.White;
-        canvas.FontSize = 18f;
-        int lives = _engine.MaxLives - _engine.GoalsConceded;
-        string livesStr = new string('o', lives) + new string('x', _engine.GoalsConceded);
-        canvas.DrawString($"LIVES: {livesStr}",
-            dirtyRect.Width - 12f, _engine.GoalTop * 0.55f, HorizontalAlignment.Right);
+        canvas.FontSize = 15f;
+        canvas.DrawString($"{_engine.DefendScore}  DEF",
+            dirty.Width - 8f, bandH * 0.65f, HorizontalAlignment.Right);
+
+        // Carrier hint
+        var carrier = _engine.BallCarrier;
+        if (carrier != null && _engine.State == MatchState.Playing)
+        {
+            canvas.FontColor = Color.FromArgb("#A5D6A7");
+            canvas.FontSize = 11f;
+            canvas.DrawString($"#{carrier.Number} has ball",
+                dirty.Width / 2f, dirty.Height - 2f, HorizontalAlignment.Center);
+        }
     }
 
-    private void DrawResultFlash(ICanvas canvas, RectF dirtyRect)
+    // ── Result flash ─────────────────────────────────────────────────────────
+
+    private void DrawResultMessage(ICanvas canvas, RectF dirty)
     {
-        if (_engine.Ball.IsSaved)
-        {
-            canvas.FontColor = Colors.LimeGreen;
-            canvas.FontSize = 44f;
-            canvas.DrawString("SAVED!", dirtyRect.Width / 2f,
-                dirtyRect.Height * 0.45f, HorizontalAlignment.Center);
-        }
-        else if (_engine.Ball.IsGoal)
-        {
-            canvas.FontColor = Colors.OrangeRed;
-            canvas.FontSize = 44f;
-            canvas.DrawString("GOAL!", dirtyRect.Width / 2f,
-                dirtyRect.Height * 0.45f, HorizontalAlignment.Center);
-        }
+        if (string.IsNullOrEmpty(_engine.ResultMessage)) return;
+
+        canvas.FontSize = 46f;
+        canvas.FontColor = _engine.State == MatchState.GoalCelebration
+            ? Colors.LimeGreen
+            : Colors.OrangeRed;
+
+        canvas.DrawString(_engine.ResultMessage,
+            dirty.Width / 2f, dirty.Height * 0.44f,
+            HorizontalAlignment.Center);
     }
 }
+

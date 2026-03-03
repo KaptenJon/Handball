@@ -19,7 +19,7 @@
                    FontAttributes="Bold"
                    TextColor="White"
                    HorizontalTextAlignment="Center" />
-            <Label Text="GOALKEEPER"
+            <Label Text="7 vs 7 Attack Game"
                    FontSize="26"
                    TextColor="#FFD700"
                    FontAttributes="Bold"
@@ -39,7 +39,7 @@
                     CornerRadius="32"
                     HorizontalOptions="Fill"
                     Clicked="OnPlayClicked" />
-            <Label Text="Swipe or tap to move the goalkeeper"
+            <Label Text="Use the buttons to control your team"
                    FontSize="13"
                    TextColor="#A5D6A7"
                    HorizontalTextAlignment="Center" />
@@ -60,16 +60,22 @@
                        TextColor="White"
                        FontSize="15"
                        HorizontalTextAlignment="Center" />
-                <Label Text="• Drag goalkeeper left or right to block shots"
+                <Label Text="• PASS ↑ – pass to the player nearest the goal"
                        TextColor="#C8E6C9"
                        FontSize="13" />
-                <Label Text="• Tap anywhere to jump-move the goalkeeper"
+                <Label Text="• PASS ↓ – pass back to a player behind you"
                        TextColor="#C8E6C9"
                        FontSize="13" />
-                <Label Text="• 3 goals conceded ends the game"
+                <Label Text="• ▲ FWD / ◄ FWD-L / FWD-R ► – move ball carrier"
                        TextColor="#C8E6C9"
                        FontSize="13" />
-                <Label Text="• Ball speed increases every 5 saves!"
+                <Label Text="• SHOOT 🎯 – fire at the opponent's goal"
+                       TextColor="#C8E6C9"
+                       FontSize="13" />
+                <Label Text="• Only the player with the ball can move"
+                       TextColor="#C8E6C9"
+                       FontSize="13" />
+                <Label Text="• Passers retreat automatically – first to 7 wins!"
                        TextColor="#C8E6C9"
                        FontSize="13" />
             </VerticalStackLayout>

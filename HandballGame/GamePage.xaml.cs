@@ -2,10 +2,9 @@ namespace HandballGame;
 
 public partial class GamePage : ContentPage
 {
-    private readonly GameEngine _engine = new();
+    private readonly HandballEngine _engine = new();
     private IDispatcherTimer? _gameTimer;
     private DateTime _lastUpdate;
-    private float _lastPanX;
     private bool _initialized;
 
     public GamePage()
@@ -17,7 +16,6 @@ public partial class GamePage : ContentPage
     {
         base.OnAppearing();
         GameCanvas.Drawable = new GameDrawable(_engine);
-        SetupGestures();
         _lastUpdate = DateTime.UtcNow;
         StartGameTimer();
     }
@@ -31,25 +29,20 @@ public partial class GamePage : ContentPage
     protected override void OnSizeAllocated(double width, double height)
     {
         base.OnSizeAllocated(width, height);
+        // height includes controls bar (~112 dp); canvas gets the rest
         if (width > 0 && height > 0 && !_initialized)
         {
-            _engine.Initialize((float)width, (float)height);
+        // Measure control panel height (2 rows × 52 + padding ≈ 116 dp)
+        const double ControlPanelHeight = 116;
+        const double MinCanvasHeightRatio = 0.78;
+        double canvasH = height - ControlPanelHeight;
+        if (canvasH < 100) canvasH = height * MinCanvasHeightRatio;
+            _engine.Initialize((float)width, (float)canvasH);
             _initialized = true;
         }
     }
 
-    private void SetupGestures()
-    {
-        GameCanvas.GestureRecognizers.Clear();
-
-        var pan = new PanGestureRecognizer();
-        pan.PanUpdated += OnPanUpdated;
-        GameCanvas.GestureRecognizers.Add(pan);
-
-        var tap = new TapGestureRecognizer();
-        tap.Tapped += OnTapped;
-        GameCanvas.GestureRecognizers.Add(tap);
-    }
+    // ── Game loop ────────────────────────────────────────────────────────────
 
     private void StartGameTimer()
     {
@@ -74,47 +67,64 @@ public partial class GamePage : ContentPage
         _lastUpdate = now;
 
         _engine.Update(delta);
+        GameCanvas.Invalidate();
 
-        if (_engine.IsGameOver)
+        if (_engine.State == MatchState.MatchOver)
         {
             StopGameTimer();
-            ShowGameOver();
-            return;
-        }
-
-        GameCanvas.Invalidate();
-    }
-
-    private void OnPanUpdated(object? sender, PanUpdatedEventArgs e)
-    {
-        if (!_initialized) return;
-
-        switch (e.StatusType)
-        {
-            case GestureStatus.Started:
-                _lastPanX = (float)e.TotalX;
-                break;
-            case GestureStatus.Running:
-                float deltaX = (float)e.TotalX - _lastPanX;
-                _lastPanX = (float)e.TotalX;
-                _engine.MoveGoalkeeper(deltaX);
-                break;
+            ShowMatchOver();
         }
     }
 
-    private void OnTapped(object? sender, TappedEventArgs e)
+    // ── Button handlers ──────────────────────────────────────────────────────
+
+    private void OnPassUpClicked(object? sender, EventArgs e)
     {
         if (!_initialized) return;
-        var pos = e.GetPosition(GameCanvas);
-        if (pos.HasValue)
-            _engine.SetGoalkeeperX((float)pos.Value.X);
+        _engine.TryPassUp();
     }
 
-    private void ShowGameOver()
+    private void OnPassDownClicked(object? sender, EventArgs e)
+    {
+        if (!_initialized) return;
+        _engine.TryPassDown();
+    }
+
+    private void OnForwardClicked(object? sender, EventArgs e)
+    {
+        if (!_initialized) return;
+        _engine.MoveForward();
+    }
+
+    private void OnForwardLeftClicked(object? sender, EventArgs e)
+    {
+        if (!_initialized) return;
+        _engine.MoveForwardLeft();
+    }
+
+    private void OnForwardRightClicked(object? sender, EventArgs e)
+    {
+        if (!_initialized) return;
+        _engine.MoveForwardRight();
+    }
+
+    private void OnShootClicked(object? sender, EventArgs e)
+    {
+        if (!_initialized) return;
+        _engine.TryShoot();
+    }
+
+    // ── Overlays ─────────────────────────────────────────────────────────────
+
+    private void ShowMatchOver()
     {
         MainThread.BeginInvokeOnMainThread(() =>
         {
-            FinalScoreLabel.Text = $"You saved {_engine.SavedShots} shot{(_engine.SavedShots == 1 ? "" : "s")}!";
+            bool won = _engine.AttackScore >= _engine.MaxScore;
+            GameOverTitle.Text      = won ? "YOU WIN! 🏆" : "DEFENSE WINS";
+            GameOverTitle.TextColor = won ? Colors.Gold : Colors.OrangeRed;
+            FinalScoreLabel.Text    =
+                $"{_engine.AttackScore} – {_engine.DefendScore}";
             GameOverOverlay.IsVisible = true;
             GameCanvas.Invalidate();
         });
